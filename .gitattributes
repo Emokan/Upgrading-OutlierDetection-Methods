@@ -1,0 +1,2 @@
+isoForestTutorial/creditcard.csv filter=lfs diff=lfs merge=lfs -text
+lofTutorial/nyc_taxi.csv filter=lfs diff=lfs merge=lfs -text
