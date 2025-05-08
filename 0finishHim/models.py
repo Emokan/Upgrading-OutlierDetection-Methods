@@ -16,23 +16,13 @@ from keras.api.callbacks import EarlyStopping, ReduceLROnPlateau
 
 
 def create_ocsvm_model(param_grid=None, cv=3):
-    """
-    One-Class SVM modeli oluşturur ve en iyi parametreleri bulur
-    
-    Args:
-        param_grid: Model parametreleri
-        cv: Cross-validation değeri
-        
-    Returns:
-        En iyi parametrelere sahip OCSVM modeli
-    """
     if param_grid is None:
         param_grid = {
             'nu': [0.01, 0.05, 0.1, 0.7], 
             'kernel': ['poly', 'rbf', 'sigmoid', 'linear']
         }
     
-    # OCSVM - GridSearchCV ile modelin en iyi parametrelerini bulma
+    # OCSVM - Use GridSearchCV to find the best parameters for the model
     def ocswm_score_func(estimator, X):
         return np.mean(estimator.predict(X) == 1)
 
@@ -42,31 +32,10 @@ def create_ocsvm_model(param_grid=None, cv=3):
 
 
 def create_lof_model(n_neighbors=17, contamination=0.05):
-    """
-    Local Outlier Factor modeli oluşturur
-    
-    Args:
-        n_neighbors: Komşu sayısı
-        contamination: Aykırı değer oranı
-        
-    Returns:
-        LOF modeli
-    """
     return LocalOutlierFactor(n_neighbors=n_neighbors, contamination=contamination)
 
 
 def create_isolation_forest(n_estimators=100, contamination=0.05, random_state=42):
-    """
-    Isolation Forest modeli oluşturur
-    
-    Args:
-        n_estimators: Ağaç sayısı
-        contamination: Aykırı değer oranı
-        random_state: Random seed
-        
-    Returns:
-        Isolation Forest modeli
-    """
     return IsolationForest(
         n_estimators=n_estimators, 
         contamination=contamination, 
@@ -76,40 +45,18 @@ def create_isolation_forest(n_estimators=100, contamination=0.05, random_state=4
 
 
 def create_elliptic_envelope(contamination=0.1, random_state=2):
-    """
-    Elliptic Envelope modeli oluşturur
-    
-    Args:
-        contamination: Aykırı değer oranı
-        random_state: Random seed
-        
-    Returns:
-        Elliptic Envelope modeli
-    """
     return EllipticEnvelope(contamination=contamination, random_state=random_state)
 
-
 def create_hybrid_model(input_shape=(8, 8, 1), feature_shape=None):
-    """
-    CNN ve öznitelik tabanlı hibrit bir model oluşturur
-    
-    Args:
-        input_shape: Giriş görüntü boyutu
-        feature_shape: Öznitelik vektörü boyutu
-        
-    Returns:
-        Oluşturulan hibrit model
-    """
-    # Görüntü girişi
     img_input = Input(shape=input_shape)
 
-    # Data Augmentation Katmanları
+    # Data Augmentation Layers
     x = RandomRotation(0.05)(img_input)
     x = RandomZoom(0.1)(x)
     x = RandomTranslation(0.1, 0.1)(x)
     x = BatchNormalization()(x)
 
-    # CNN bölümü
+    # CNN section
     x = Conv2D(filters=16, kernel_size=(3,3), padding='same', activation='relu')(x)
     x = BatchNormalization()(x)
     x = MaxPool2D(pool_size=(2,2))(x)
@@ -124,23 +71,23 @@ def create_hybrid_model(input_shape=(8, 8, 1), feature_shape=None):
     cnn_features = Dense(128, activation='relu')(x)
     cnn_features = Dropout(0.3)(cnn_features)
 
-    # Öznitelik girişi
+    # Feature input
     feature_input = Input(shape=(feature_shape,))
     feature_dense1 = Dense(64, activation='relu')(feature_input)  
     feature_dense1 = BatchNormalization()(feature_dense1)
     feature_dense = Dense(32, activation='relu')(feature_dense1)
     
-    # İki öznitelik grubunu birleştir
+    # Combine the two feature groups
     combined = Concatenate()([cnn_features, feature_dense])
     combined = Dense(64, activation='relu')(combined)
     combined = BatchNormalization()(combined)
     combined = Dropout(0.4)(combined)
     output = Dense(11, activation='softmax')(combined)
 
-    # Modeli oluştur
+    # Create the model
     hybrid_model = Model(inputs=[img_input, feature_input], outputs=output)
 
-    # Compile
+    # Compile the model
     optimizer = Adam(learning_rate=0.001)
     hybrid_model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=["accuracy"])
     
@@ -150,24 +97,6 @@ def create_hybrid_model(input_shape=(8, 8, 1), feature_shape=None):
 def train_hybrid_model(model, X_train_img, X_train_features, y_train, 
                       X_val_img, X_val_features, y_val, 
                       epochs=20, batch_size=32, class_weights=None):
-    """
-    Hibrit modeli eğitir
-    
-    Args:
-        model: Eğitilecek model
-        X_train_img: Eğitim görüntüleri
-        X_train_features: Eğitim öznitelikleri
-        y_train: Eğitim etiketleri
-        X_val_img: Doğrulama görüntüleri
-        X_val_features: Doğrulama öznitelikleri
-        y_val: Doğrulama etiketleri
-        epochs: Eğitim döngüsü sayısı
-        batch_size: Batch boyutu
-        class_weights: Sınıf ağırlıkları
-        
-    Returns:
-        Eğitim geçmişi
-    """
     early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=0.0001)
 
