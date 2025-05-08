@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 from keras.api.utils import to_categorical
 
-# Özel modülleri import et
+# Import custom modules
 from models import (
     create_ocsvm_model,
     create_lof_model,
@@ -29,34 +29,34 @@ from utils import (
 
 
 def main():
-    # Uyarıları bastır
+    # Suppress warnings
     warnings.filterwarnings("ignore", message="The covariance matrix associated to your dataset is not full rank")
     
-    print("=== MNIST Rakam Veri Seti Aykırı Değer Tespiti ve Sınıflandırma ===")
+    print("=== MNIST Digit Dataset Outlier Detection and Classification ===")
     
-    # Veri setini yükle
-    print("Veri seti yükleniyor...")
+    # Load the dataset
+    print("Loading the dataset...")
     digits = load_digits()
     X, y = digits.data, digits.target
     
-    # Verileri normalleştir
+    # Normalize the data
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
-    # PCA ile boyut indirgeme
+    # Dimensionality reduction with PCA
     pca = PCA(n_components=2)
     X_pca = pca.fit_transform(X_scaled)
     
-    # Anomali tespit modellerini oluştur
-    print("Anomali tespit modelleri hazırlanıyor...")
+    # Prepare anomaly detection models
+    print("Preparing anomaly detection models...")
     
-    # 1. OCSVM Modeli
+    # 1. OCSVM Model
     ocsvm_grid = create_ocsvm_model()
     ocsvm_grid.fit(X_scaled)
     best_ocsvm = ocsvm_grid.best_estimator_
-    print(f"En iyi OCSVM parametreleri: {ocsvm_grid.best_params_}")
+    print(f"Best OCSVM parameters: {ocsvm_grid.best_params_}")
     
-    # OCSVM her sınıf için ayrı aykırı değer tespiti yap
+    # Perform outlier detection with OCSVM for each class
     ocsvm_per_class_outliers = {}
     ocsvm_total_outliers = 0
     ocsvm_labels_all = np.zeros_like(y)
@@ -72,64 +72,64 @@ def main():
         ocsvm_per_class_outliers[i] = np.sum(ocsvm_labels == 0)
         ocsvm_total_outliers += np.sum(ocsvm_labels == 0)
     
-    # Skor eşiği ile OCSVM
+    # OCSVM with score threshold
     ocsvm_scores = best_ocsvm.decision_function(X_scaled)
-    threshold = np.percentile(ocsvm_scores, 5)  # %5'lik kesme noktası
+    threshold = np.percentile(ocsvm_scores, 5)  # 5% cutoff point
     ocsvm_labels_thresholded = np.where(ocsvm_scores < threshold, 0, 1)
     ocsvm_total_outliers_thresholded = np.sum(ocsvm_labels_thresholded == 0)
     
-    # OCSVM sonuçlarını yazdır
-    print(f"OCSVM (Threshold) Toplam Tespit Edilen Aykırı Değerler: {ocsvm_total_outliers_thresholded}")
+    # Print OCSVM results
+    print(f"OCSVM (Threshold) Total Detected Outliers: {ocsvm_total_outliers_thresholded}")
     for i in range(10):
-        print(f"OCSVM (Threshold) Sınıf {i}'de Tespit Edilen Aykırı Değerler: {np.sum(ocsvm_labels_thresholded[y == i] == 0)}")
+        print(f"OCSVM (Threshold) Detected Outliers in Class {i}: {np.sum(ocsvm_labels_thresholded[y == i] == 0)}")
     
     ocsvm_accuracy = accuracy_score(y_ocsvm_eval, np.where(ocsvm_labels_thresholded == 0, 0, 1))
-    print(f"OCSVM Doğruluk: {ocsvm_accuracy:.4f}")
+    print(f"OCSVM Accuracy: {ocsvm_accuracy:.4f}")
     
-    # 2. LOF Modeli
+    # 2. LOF Model
     lof = create_lof_model()
-    lof_scores = -lof.fit_predict(X_scaled)  # Negatif değerler (sklearn: -1=aykırı değer)
-    lof_labels = np.where(lof_scores > 0, 1, 0)  # 1=aykırı değer, 0=normal
+    lof_scores = -lof.fit_predict(X_scaled)  # Negative values (sklearn: -1=outlier)
+    lof_labels = np.where(lof_scores > 0, 1, 0)  # 1=outlier, 0=normal
     
-    print(f"LOF Tespit Edilen Aykırı Değer Sayısı: {np.sum(lof_labels == 1)}")
-    print(f"LOF Aykırı Değer Yüzdesi: {np.sum(lof_labels == 1) / len(lof_labels) * 100:.2f}%")
+    print(f"LOF Detected Outlier Count: {np.sum(lof_labels == 1)}")
+    print(f"LOF Outlier Percentage: {np.sum(lof_labels == 1) / len(lof_labels) * 100:.2f}%")
     
     y_lof_eval = np.ones_like(y)
     y_lof_eval[lof_labels == 1] = 0
     lof_accuracy = accuracy_score(y_ocsvm_eval, y_lof_eval)
-    print(f"LOF Doğruluk: {lof_accuracy:.4f}")
+    print(f"LOF Accuracy: {lof_accuracy:.4f}")
     
-    # 3. Isolation Forest Modeli
+    # 3. Isolation Forest Model
     iforest = create_isolation_forest(contamination=0.05)
     iforest.fit(X_scaled)
     iforest_scores = iforest.decision_function(X_scaled)
     iforest_outliers = iforest.predict(X_scaled)
-    iforest_labels = np.where(iforest_outliers == -1, 0, 1)  # 0=aykırı değer, 1=normal
+    iforest_labels = np.where(iforest_outliers == -1, 0, 1)  # 0=outlier, 1=normal
     
     y_iforest_eval = np.ones_like(y)
     y_iforest_eval[iforest_labels == 0] = 0
     iforest_accuracy = accuracy_score(y_ocsvm_eval, y_iforest_eval)
-    print(f"Isolation Forest Doğruluk: {iforest_accuracy:.4f}")
+    print(f"Isolation Forest Accuracy: {iforest_accuracy:.4f}")
     
-    # 4. Elliptic Envelope Modeli
+    # 4. Elliptic Envelope Model
     envelope = create_elliptic_envelope(contamination=0.1)
     envelope_outliers = envelope.fit_predict(X_scaled)
-    envelope_labels = np.where(envelope_outliers == -1, 0, 1)  # 0=aykırı değer, 1=normal
+    envelope_labels = np.where(envelope_outliers == -1, 0, 1)  # 0=outlier, 1=normal
     
     envelope_outlier_count = np.sum(envelope_labels == 0)
     envelope_outlier_ratio = envelope_outlier_count / len(X_scaled)
-    print(f"Elliptic Envelope Tespit Edilen Aykırı Değerler: {envelope_outlier_count}")
-    print(f"Elliptic Envelope Aykırı Değer Oranı: {envelope_outlier_ratio:.2%}")
+    print(f"Elliptic Envelope Detected Outliers: {envelope_outlier_count}")
+    print(f"Elliptic Envelope Outlier Ratio: {envelope_outlier_ratio:.2%}")
     
     y_envelope_eval = np.ones_like(y)
     y_envelope_eval[envelope_labels == 0] = 0
     envelope_accuracy = accuracy_score(y_ocsvm_eval, y_envelope_eval)
-    print(f"Elliptic Envelope Doğruluk: {envelope_accuracy:.4f}")
+    print(f"Elliptic Envelope Accuracy: {envelope_accuracy:.4f}")
     
-    # Tüm anomali etiketlerini birleştir
+    # Combine all anomaly labels
     y_with_outliers = np.copy(y)
     
-    # Tüm aykırı değerleri birleştir
+    # Merge all outliers
     all_outliers = np.union1d(
         np.union1d(
             np.union1d(
@@ -141,47 +141,47 @@ def main():
         np.where(envelope_labels == 0)[0]
     )
     
-    # Aykırı değerlerin sınıfını 10 yap (yeni sınıf)
+    # Assign a new class (10) to outliers
     y_with_outliers[all_outliers] = 10
     
-    print("\n=== Hibrit CNN Modeli Eğitimi Başlıyor ===")
+    print("\n=== Hybrid CNN Model Training Starts ===")
     
-    # Orijinal görüntüleri kullan (8x8)
-    X_images = digits.images / 16.0  # Normalizasyon
-    X_images = X_images.reshape(-1, 8, 8, 1)  # CNN için reshape
+    # Use original images (8x8)
+    X_images = digits.images / 16.0  # Normalization
+    X_images = X_images.reshape(-1, 8, 8, 1)  # Reshape for CNN
     
-    # Özel öznitelikleri çıkar
-    print("Özel öznitelikler çıkarılıyor...")
+    # Extract custom features
+    print("Extracting custom features...")
     X_custom_features = extract_digit_features(digits.images)
     
-    # One-hot encoding - normal sınıflar (0-9) + aykırı değer sınıfı (10)
+    # One-hot encoding - normal classes (0-9) + outlier class (10)
     y_categorical = to_categorical(y_with_outliers, num_classes=11)
     
-    # Veri setini böl
+    # Split the dataset
     X_train_img, X_test_img, y_train_cat, y_test_cat = train_test_split(
         X_images, y_categorical, test_size=0.4, random_state=42
     )
     
-    # Öznitelik veri setini de aynı şekilde böl
+    # Split the feature dataset similarly
     X_train_features, X_test_features, _, _ = train_test_split(
         X_custom_features, y_categorical, test_size=0.4, random_state=42
     )
     
-    # Sınıf ağırlıklarını tanımla
+    # Define class weights
     class_weights = {i: 1.0 for i in range(11)}
-    class_weights[1] = 2.5  # 1 rakamı için yüksek ağırlık
-    class_weights[2] = 2.0  # 2 rakamı için ağırlık
-    class_weights[8] = 2.0  # 8 rakamı için ağırlık
+    class_weights[1] = 2.5  # Higher weight for digit 1
+    class_weights[2] = 2.0  # Weight for digit 2
+    class_weights[8] = 2.0  # Weight for digit 8
     
-    # Hibrit modeli oluştur
-    print("Hibrit CNN modeli oluşturuluyor...")
+    # Create the hybrid model
+    print("Creating the hybrid CNN model...")
     hybrid_model = create_hybrid_model(
         input_shape=(8, 8, 1), 
         feature_shape=X_custom_features.shape[1]
     )
     
-    # Modeli eğit
-    print("Model eğitimi başlıyor...")
+    # Train the model
+    print("Starting model training...")
     history = train_hybrid_model(
         hybrid_model,
         X_train_img, 
@@ -195,92 +195,92 @@ def main():
         class_weights=class_weights
     )
     
-    # Eğitim geçmişini görselleştir
+    # Visualize training history
     plot_training_history(history)
     
-    # Hibrit modeli değerlendir
-    print("\n=== Model Değerlendirmesi ===")
+    # Evaluate the hybrid model
+    print("\n=== Model Evaluation ===")
     test_loss, test_accuracy = hybrid_model.evaluate(
         [X_test_img, X_test_features], y_test_cat, verbose=1
     )
     
-    # Modelin tahminlerini al
+    # Get model predictions
     y_pred_proba = hybrid_model.predict([X_test_img, X_test_features])
     y_pred_classes = np.argmax(y_pred_proba, axis=1)
     y_true = np.argmax(y_test_cat, axis=1)
     
-    # Her rakam için doğruluk analizini yap
+    # Analyze accuracy for each digit
     analyze_per_digit_accuracy(y_true, y_pred_classes)
     
-    # Tüm sınıflar için metrikler
+    # Metrics for all classes
     cnn_precision = precision_score(y_true, y_pred_classes, average='weighted')
     cnn_recall = recall_score(y_true, y_pred_classes, average='weighted')
     cnn_f1 = f1_score(y_true, y_pred_classes, average='weighted')
     
-    # Ayrıştırılmış doğruluk metrikleri
+    # Segmented accuracy metrics
     normal_indices = np.where(y_true != 10)[0]
     normal_accuracy = accuracy_score(y_true[normal_indices], y_pred_classes[normal_indices])
     
-    # Aykırı değerler için doğruluk (sadece sınıf 10)
+    # Accuracy for outliers (class 10 only)
     outlier_indices = np.where(y_true == 10)[0]
     if len(outlier_indices) > 0:
         outlier_accuracy = accuracy_score(y_true[outlier_indices], y_pred_classes[outlier_indices])
     else:
         outlier_accuracy = 0.0
     
-    # Aykırı değer tespiti için precision ve recall
+    # Precision and recall for outlier detection
     outlier_precision = precision_score(y_true == 10, y_pred_classes == 10)
     outlier_recall = recall_score(y_true == 10, y_pred_classes == 10)
     
-    # Karmaşıklık matrisi
+    # Confusion matrix
     plot_confusion_matrix(y_true, y_pred_classes)
     
-    # CNN tarafından tespit edilen aykırı değerleri bul
+    # Find outliers detected by CNN
     cnn_outliers = np.where(y_pred_classes == 10)[0]
     true_outliers = np.where(y_true == 10)[0]
     
-    # Her bir model için sadece o model tarafından tespit edilen aykırı değerler
-    # Test indekslerine göre dönüştür
+    # Outliers detected only by each model
+    # Convert to test indices
     test_indices = np.arange(len(y_test_cat))
     
     cnn_only_outliers = test_indices[np.setdiff1d(np.where(y_pred_classes == 10)[0], np.where(y_true == 10)[0])]
     
-    # Her bir model için aykırı değer tespiti sonuçlarını tut
+    # Store outlier detection results for each model
     ocsvm_outliers = np.where(ocsvm_labels_thresholded == 0)[0]
     lof_outliers = np.where(lof_labels == 1)[0]
     iforest_outliers = np.where(iforest_labels == 0)[0]
     envelope_outliers = np.where(envelope_labels == 0)[0]
     
-    # Sonuçları yazdır
-    print("\n=== Model Metrikleri ===")
-    print(f"CNN Test Doğruluğu: {test_accuracy:.4f}")
+    # Print results
+    print("\n=== Model Metrics ===")
+    print(f"CNN Test Accuracy: {test_accuracy:.4f}")
     print(f"CNN Precision: {cnn_precision:.4f}")
     print(f"CNN Recall: {cnn_recall:.4f}")
     print(f"CNN F1-Score: {cnn_f1:.4f}")
-    print(f"CNN Normal Rakamlar Doğruluğu: {normal_accuracy:.4f}")
-    print(f"CNN Aykırı Değer Tespit Doğruluğu: {outlier_accuracy:.4f}")
-    print(f"CNN Aykırı Değer Precision: {outlier_precision:.4f}")
-    print(f"CNN Aykırı Değer Recall: {outlier_recall:.4f}")
+    print(f"CNN Normal Digits Accuracy: {normal_accuracy:.4f}")
+    print(f"CNN Outlier Detection Accuracy: {outlier_accuracy:.4f}")
+    print(f"CNN Outlier Precision: {outlier_precision:.4f}")
+    print(f"CNN Outlier Recall: {outlier_recall:.4f}")
     
-    print("\n=== Aykırı Değer Tespit Sonuçları ===")
-    print(f"OCSVM Tespit Edilen Toplam Aykırı Değer: {len(ocsvm_outliers)}")
-    print(f"LOF Tespit Edilen Aykırı Değer: {len(lof_outliers)}")
-    print(f"Isolation Forest Tespit Edilen Aykırı Değer: {len(iforest_outliers)}")
-    print(f"Elliptic Envelope Tespit Edilen Aykırı Değer: {len(envelope_outliers)}")
-    print(f"CNN Tespit Edilen Aykırı Değer: {len(cnn_outliers)}")
-    print(f"CNN'in Sadece Tespit Ettiği Aykırı Değerler: {len(cnn_only_outliers)}")
+    print("\n=== Outlier Detection Results  ===")
+    print(f"OCSVM Total Detected Outliers: {len(ocsvm_outliers)}")
+    print(f"LOF Detected Outliers: {len(lof_outliers)}")
+    print(f"Isolation Forest Detected Outliers: {len(iforest_outliers)}")
+    print(f"Elliptic Envelope Detected Outliers: {len(envelope_outliers)}")
+    print(f"CNN Detected Outliers: {len(cnn_outliers)}")
+    print(f"CNN Only Outliers: {len(cnn_only_outliers)}")
     
-    # Her rakam için yanlış sınıflandırmaları görselleştir
+    # Visualize misclassifications for each digit
     for i in range(10):
         visualize_misclassified_digits(X_test_img, y_true, y_pred_classes, i)
     
-    # Aykırı değer tespit sonuçlarını görselleştir
+    # Visualize outlier detection results
     model_results = {
-        'ocsvm': ocsvm_outliers,
-        'lof': lof_outliers,
-        'iforest': iforest_outliers,
-        'envelope': envelope_outliers,
-        'cnn': cnn_outliers
+        'OCSVM Detected Outliers': ocsvm_outliers,
+        'LOF Detected Outliers': lof_outliers,
+        'Isolation Forest Detected Outliers': iforest_outliers,
+        'Elliptic Envelope Outliers': envelope_outliers,
+        'CNN Outliers': cnn_outliers
     }
     
     plot_outlier_detection_results(X_pca, y_with_outliers, model_results)
